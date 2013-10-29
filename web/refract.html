@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>ShadowProxy</title>
+    <link rel="stylesheet" href="refract.css">
+  </head>
+  <body>
+    <table><tr><td width="600">
+      <canvas id="glCanvas" width="512" height="512"></canvas>
+      <p>
+        View mode:
+        <select id="viewMode">
+          <option value="comp">Composite</option>
+          <option value="fNorm">Front normals</option>
+          <option value="bNorm">Back normals</option>
+          <option value="fDepth">Front depth</option>
+          <option value="bDepth">Back depth</option>
+          <option value="thick">Thickness</option>
+        </select>
+      </p>
+      <p>
+        This was based on <a href="http://homepage.divms.uiowa.edu/~cwyman/publications/files/approxISRefract/approxISRefr.pdf">
+        "An Approximate Image-Space Approach for Interactive Refraction"</a>,
+        by Chris Wyman.
+      </p>
+      <p>
+        Programmed in <a href="http://dartlang.org"> Dart</a>.
+      </p>
+    </td></tr></table>
+
+    <script type="application/dart" src="refract.dart"></script>
+    <script src="packages/browser/dart.js"></script>
+  </body>
+</html>
