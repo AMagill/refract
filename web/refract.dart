@@ -34,8 +34,7 @@ class Refract {
     bigQuad = new Model(_gl)
       ..loadBuffers(webgl.TRIANGLES,
         new IndexBuffer(_gl, [0,1,2, 0,2,3]),
-        [new VertexBuffer(_gl, 2, [-1.0,-1.0,  1.0,-1.0,  1.0,1.0,  -1.0,1.0]),
-         new VertexBuffer(_gl, 2, [ 0.0, 0.0,  1.0, 0.0,  1.0,1.0,   0.0,1.0])]);
+        [new VertexBuffer(_gl, 2, [-1.0,-1.0,  1.0,-1.0,  1.0,1.0,  -1.0,1.0])]);
     
     backTex = new Texture(_gl)
       ..loadImageUrl("env_1024.jpg").then((_) => render());
@@ -121,16 +120,11 @@ precision mediump float;
 precision mediump int;
 
 attribute vec3 aPosition;
-attribute vec2 aTexCoord;
 
-uniform mat4 uProjMatrix;
-uniform mat4 uModelViewMatrix;
-
-varying vec2 vTexCoord;
+varying vec4 vPosition;
 
 void main(void) {
-  gl_Position = vec4(aPosition.xy, 0.99, 1.0);
-  vTexCoord = aTexCoord;
+  gl_Position = vPosition = vec4(aPosition.xy, 0.99, 1.0);
 }
     """;
     
@@ -138,21 +132,27 @@ void main(void) {
 precision mediump float;
 precision mediump int;
 
-uniform mat4      uProjMatrix;
-uniform mat4      uModelViewMatrix;
+uniform mat4      uInvMvpMatrix;
 uniform vec2      uViewSize;
 uniform sampler2D uBackSampler;
 
-varying vec2 vTexCoord;
+varying vec4 vPosition;
+
+vec2 vecToER(vec4 dir) {
+  const float PI = 3.1415926535898;
+  vec3 ndir = normalize(dir.xyz / dir.w);
+  return vec2(atan(ndir.x, ndir.z) / (2.0*PI), acos(ndir.y) / PI);
+}
 
 void main(void) {
-  //gl_FragColor = vec4(gl_FragCoord.xy / uViewSize, 0.0, 1.0);
-  gl_FragColor = texture2D(uBackSampler, vTexCoord);
+  //vec2 coord = gl_FragCoord.xy/uViewSize;
+  vec2 coord = vecToER(uInvMvpMatrix * vPosition);
+  gl_FragColor = texture2D(uBackSampler, coord);
 }
     """;
 
     _envShader = new Shader(_gl, vsEnvironment, fsEnvironment, 
-        {'aPosition':0, 'aTexCoord':1});
+        {'aPosition':0});
 }
     
   void render() {
@@ -246,10 +246,10 @@ void main(void) {
     // Draw the environment map
     if (renderMode == 0) {
       _envShader.use();
-      _gl.uniformMatrix4fv(_envShader.uniforms['uModelViewMatrix'], false, 
-          new Float32List.fromList(mv.storage));
-      _gl.uniformMatrix4fv(_envShader.uniforms['uProjMatrix'], false, 
-          pMatrix.storage);
+      Matrix4 invMvpMatrix = pMatrix * mv;
+      invMvpMatrix.invert();
+      _gl.uniformMatrix4fv(_envShader.uniforms['uInvMvpMatrix'], false, 
+          invMvpMatrix.storage);      
       
       _gl.depthMask(false);
       bigQuad.bind();
