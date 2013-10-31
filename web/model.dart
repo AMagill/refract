@@ -1,21 +1,35 @@
 library model;
+import 'dart:html';
 import 'dart:web_gl' as webgl;
 import 'dart:typed_data';
 import 'dart:convert'; 
+import 'dart:async';
 
 class Model {
   webgl.RenderingContext _gl;
   IndexBuffer _indexBuffer;
   List<VertexBuffer> _vertexBuffers;
   int _drawMode;
-  bool _empty = false;
+  bool _empty = true;
 
-  Model(this._gl, this._drawMode, this._indexBuffer, this._vertexBuffers);
-  Model.empty() : this._empty = true;
+  Model(this._gl);
   
-  Model.fromJsonFast(this._gl, String str) :
-    this._drawMode = webgl.TRIANGLES
-  {
+  void loadBuffers(drawMode, indexBuf, vertexBuf) {
+    this._empty         = false;
+    this._drawMode      = drawMode;
+    this._indexBuffer   = indexBuf;
+    this._vertexBuffers = vertexBuf;
+  }
+  
+  Future loadJsonUrl(String url) {
+    return HttpRequest.getString(url)
+      .then((response) => loadJson(response));
+  }
+  
+  void loadJson(String str) {
+    this._empty = false;
+    this._drawMode = webgl.TRIANGLES;
+    
     // Based on https://github.com/mrdoob/three.js/wiki/JSON-Model-format-3.1
     var js = JSON.decode(str);
     

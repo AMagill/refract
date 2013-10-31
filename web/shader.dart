@@ -57,6 +57,10 @@ class Shader {
       uniforms[info.name] = _gl.getUniformLocation(_shaderProgram, info.name);
     }
   }
+  
+  void use() {
+    _gl.useProgram(_shaderProgram);
+  }
 }
 
 class ShaderException {

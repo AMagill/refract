@@ -10,7 +10,7 @@ import 'texture.dart';
 class Refract {
   int _width, _height;
   webgl.RenderingContext _gl;
-  Shader _shader;
+  Shader _objShader, _envShader;
   FrameBuffer _backFbo;
   Vector3 camPos;
   Model model, bigQuad;
@@ -26,43 +26,46 @@ class Refract {
     
     _gl.clearColor(0.5, 0.5, 0.5, 1.0);
 
-    // Initialize stuff!
-    _initShaders();
-    _backFbo = new FrameBuffer(_gl, _width, _height); 
-    _gl.bindTexture(webgl.TEXTURE_2D, _backFbo.imageTex);
-    _gl.uniform1i(_shader.uniforms['uBackSampler'], 0);
-    _gl.uniform2f(_shader.uniforms['uViewSize'], _width, _height);
     
+    // Load stuff!
+    model = new Model(_gl)
+    ..loadJsonUrl("monkey-2.js").then((_) => render());
+    
+    bigQuad = new Model(_gl)
+      ..loadBuffers(webgl.TRIANGLES,
+        new IndexBuffer(_gl, [0,1,2, 0,2,3]),
+        [new VertexBuffer(_gl, 2, [-1.0,-1.0,  1.0,-1.0,  1.0,1.0,  -1.0,1.0]),
+         new VertexBuffer(_gl, 2, [ 0.0, 0.0,  1.0, 0.0,  1.0,1.0,   0.0,1.0])]);
+    
+    backTex = new Texture(_gl)
+      ..loadImageUrl("env_1024.jpg").then((_) => render());
+
+    
+    // Initialize stuff!
     Matrix4 pMatrix = makePerspectiveMatrix(radians(45.0), _width / _height, 3.0, 7.0);
     //Matrix4 pMatrix = makeOrthographicMatrix(-2.0, 2.0, -2.0, 2.0, 3.0, 7.0);
-    _gl.uniformMatrix4fv(_shader.uniforms['uProjMatrix'],  false, pMatrix.storage);
+
+    _initShaders();
+    _backFbo = new FrameBuffer(_gl, _width, _height); 
+    _gl.activeTexture(webgl.TEXTURE0);
+    _gl.bindTexture(webgl.TEXTURE_2D, _backFbo.imageTex);
+    _gl.activeTexture(webgl.TEXTURE1);
+    _gl.bindTexture(webgl.TEXTURE_2D, backTex.texture);
+    _objShader.use();
+    _gl.uniform1i(_objShader.uniforms['uBackSampler'], 0);
+    _gl.uniform2f(_objShader.uniforms['uViewSize'], _width, _height);
+    _gl.uniformMatrix4fv(_objShader.uniforms['uProjMatrix'],  false, pMatrix.storage);
+    _envShader.use();
+    _gl.uniform2f(_envShader.uniforms['uViewSize'], _width, _height);
+    _gl.uniformMatrix4fv(_envShader.uniforms['uProjMatrix'],  false, pMatrix.storage);
+    _gl.uniform1i(_envShader.uniforms['uBackSampler'], 1);
     
     _gl.enable(webgl.DEPTH_TEST);
-
-    model = new Model.empty();  // Just until it loads
-    HttpRequest.getString("monkey-2.js").then((response) {
-      model = new Model.fromJsonFast(_gl, response);
-      render();
-    });
-    
-    /*backTex = new Texture.empty();  // Just until it loads
-    ImageElement img = new ImageElement();
-    img.onLoad.listen((_) {
-      
-    });*/
-    HttpRequest.getString("monkey-2.js").then((response) {
-      model = new Model.fromJsonFast(_gl, response);
-      render();
-    });
-    
-    bigQuad = new Model(_gl, webgl.TRIANGLES,
-        new IndexBuffer(_gl, [0,1,2, 0,2,3]),
-        [new VertexBuffer(_gl, 2, [-1.0,-1.0,  1.0,-1.0,  1.0,1.0,  -1.0,1.0])]);
         
   }
-  
+
   void _initShaders() {
-    String vsSource = """
+    String vsObject = """
 precision mediump float;
 precision mediump int;
 
@@ -76,22 +79,19 @@ uniform int  uViewMode;
 varying vec3 vNormal;
 
 void main(void) {
-  if (uViewMode == 5)
-    gl_Position = vec4(aVertexPosition.xy, 0.99, 1.0);
-  else
-    gl_Position = uProjMatrix * uModelViewMatrix * 
-      vec4(aVertexPosition, 1.0);
+  gl_Position = uProjMatrix * uModelViewMatrix * 
+    vec4(aVertexPosition, 1.0);
   vNormal = aVertexNormal;
 }
     """;
     
-    String fsSource = """
+    String fsObject = """
 precision mediump float;
 precision mediump int;
 
 uniform mat4      uProjMatrix;
 uniform int       uViewMode;
-uniform vec2      uViewSize;      
+uniform vec2      uViewSize;
 uniform sampler2D uBackSampler;
 
 varying vec3 vNormal;
@@ -108,40 +108,78 @@ void main(void) {
       (gl_FragCoord.xy) / uViewSize).a - gl_FragCoord.z;
     gl_FragColor =  vec4(a, a, a, 1.0);
   }
-  else if (uViewMode == 4)    // Combined depth
+  else //if (uViewMode == 4)    // Combined depth
     gl_FragColor = vec4((vNormal+1.0)*0.5, gl_FragCoord.z);
-  else {                      // Environment map
-    gl_FragColor = vec4(gl_FragCoord.xy / uViewSize, 0.0, 1.0);
-  }
 }
     """;
     
-    _shader = new Shader(_gl, vsSource, fsSource, 
+    _objShader = new Shader(_gl, vsObject, fsObject, 
         {'aVertexPosition':0, 'aVertexNormal':1});
-  }
+    
+    String vsEnvironment = """
+precision mediump float;
+precision mediump int;
+
+attribute vec3 aPosition;
+attribute vec2 aTexCoord;
+
+uniform mat4 uProjMatrix;
+uniform mat4 uModelViewMatrix;
+
+varying vec2 vTexCoord;
+
+void main(void) {
+  gl_Position = vec4(aPosition.xy, 0.99, 1.0);
+  vTexCoord = aTexCoord;
+}
+    """;
+    
+    String fsEnvironment = """
+precision mediump float;
+precision mediump int;
+
+uniform mat4      uProjMatrix;
+uniform mat4      uModelViewMatrix;
+uniform vec2      uViewSize;
+uniform sampler2D uBackSampler;
+
+varying vec2 vTexCoord;
+
+void main(void) {
+  //gl_FragColor = vec4(gl_FragCoord.xy / uViewSize, 0.0, 1.0);
+  gl_FragColor = texture2D(uBackSampler, vTexCoord);
+}
+    """;
+
+    _envShader = new Shader(_gl, vsEnvironment, fsEnvironment, 
+        {'aPosition':0, 'aTexCoord':1});
+}
     
   void render() {
-    // Set modelview
+    
+    // Generate matrices
     var mv = new Matrix4.identity()
       ..translate(0.0, 0.0, -5.0)//camPos.z)
       ..rotateY(radians(camPos.x))
       ..rotateX(radians(camPos.y));
-    _gl.uniformMatrix4fv(_shader.uniforms['uModelViewMatrix'], false, 
-        new Float32List.fromList(mv.storage));
-
     Matrix4 pMatrix = makePerspectiveMatrix(radians(-camPos.z*9.0), _width / _height, 3.0, 7.0);
-    _gl.uniformMatrix4fv(_shader.uniforms['uProjMatrix'],  false, pMatrix.storage);
+
+    // Set them in the object shader
+    _objShader.use();
+    _gl.uniformMatrix4fv(_objShader.uniforms['uModelViewMatrix'], false, 
+        new Float32List.fromList(mv.storage));
+    _gl.uniformMatrix4fv(_objShader.uniforms['uProjMatrix'],  false, pMatrix.storage);
 
     // Render back view
     bool skip = false;
     switch (renderMode) {
       case 0:   // Composite
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 4);
+        _gl.uniform1i(_objShader.uniforms['uViewMode'], 4);
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, _backFbo.fbo);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
         break;
       case 5:   // Thickness
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 4);
+        _gl.uniform1i(_objShader.uniforms['uViewMode'], 4);
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, _backFbo.fbo);
         _gl.clearColor(0, 0, 0, 1);
         break;
@@ -150,12 +188,12 @@ void main(void) {
         skip = true;
         break;
       case 2:   // Back normals
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 1);
+        _gl.uniform1i(_objShader.uniforms['uViewMode'], 1);
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
         break;
       case 4:   // Back depth
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 2);
+        _gl.uniform1i(_objShader.uniforms['uViewMode'], 2);
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
         _gl.clearColor(0, 0, 0, 1);
         break;
@@ -170,21 +208,15 @@ void main(void) {
       model.draw();
     }
     
-/*    _gl.clearDepth(1);
-    _gl.depthFunc(webgl.LESS);
-    _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
-    _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
-              webgl.RenderingContext.DEPTH_BUFFER_BIT);
-*/
     // Now the front view
     skip = false;
     switch (renderMode) {
       case 0:   // Composite
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 0);
+        _gl.uniform1i(_objShader.uniforms['uViewMode'], 0);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
         break;
       case 1:   // Front normals
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 1);
+        _gl.uniform1i(_objShader.uniforms['uViewMode'], 1);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
         break;
       case 2:   // Back normals
@@ -192,11 +224,11 @@ void main(void) {
         skip = true;
         break;
       case 3:   // Front depth
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 2);
+        _gl.uniform1i(_objShader.uniforms['uViewMode'], 2);
         _gl.clearColor(1, 1, 1, 1);
         break;
       case 5:   // Thickness
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 3);
+        _gl.uniform1i(_objShader.uniforms['uViewMode'], 3);
         _gl.clearColor(0, 0, 0, 1);
         break;
     }
@@ -213,7 +245,12 @@ void main(void) {
     
     // Draw the environment map
     if (renderMode == 0) {
-      _gl.uniform1i(_shader.uniforms['uViewMode'], 5);
+      _envShader.use();
+      _gl.uniformMatrix4fv(_envShader.uniforms['uModelViewMatrix'], false, 
+          new Float32List.fromList(mv.storage));
+      _gl.uniformMatrix4fv(_envShader.uniforms['uProjMatrix'], false, 
+          pMatrix.storage);
+      
       _gl.depthMask(false);
       bigQuad.bind();
       bigQuad.draw();
