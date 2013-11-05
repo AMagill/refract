@@ -83,7 +83,7 @@ void main(void) {
     vEyeDirection = mat3(uTModelView) * (uInvProj * vec4(aPosition,1.0)).xyz;
   } else {
     gl_Position = uProjMatrix * uModelViewMatrix *  vec4(aPosition, 1.0);
-    vEyeDirection = (uTModelView * vec4(aPosition,1.0)).xyz;
+    vEyeDirection = vec3(uModelViewMatrix[3] * uModelViewMatrix) + aPosition;
   }
 }
     """;
@@ -105,14 +105,16 @@ vec4 textureOrtho(sampler2D sampler, vec3 dir) {
   const float PI  = 3.1415926535898;
   const float PI2 = PI * 2.0;
 
-  vec3 ndir = normalize(dir.xyz);
-  vec2 coord = vec2(atan(ndir.z, ndir.x) / PI2, acos(ndir.y) / PI);
+  vec2 coord = vec2(atan(dir.z, dir.x) / PI2, acos(dir.y) / PI);
   return texture2D(sampler, coord);
 }
 
 void main(void) {
-  if (uViewMode == 0)         // Composite
-    gl_FragColor = textureOrtho(uEnvSampler, vEyeDirection);
+  if (uViewMode == 0) {       // Composite
+    vec3 rayDir = normalize(vEyeDirection);
+    //rayDir = refract(rayDir, vec3(0.0,0.0,1.0), 1.0);
+    gl_FragColor = textureOrtho(uEnvSampler, rayDir) + vec4(0.1, 0.1, 0.1, 0.0);
+  }
   else if (uViewMode == 1)    // Normals
     gl_FragColor = vec4((vNormal+1.0)*0.5, 1.0);
   else if (uViewMode == 2)    // Depth
@@ -124,8 +126,10 @@ void main(void) {
   }
   else if (uViewMode == 4)    // Combined depth
     gl_FragColor = vec4((vNormal+1.0)*0.5, gl_FragCoord.z);
-  else // if (uViewMode == 5) // Environment
-    gl_FragColor = textureOrtho(uEnvSampler, vEyeDirection);
+  else { // if (uViewMode == 5) // Environment
+    vec3 rayDir = normalize(vEyeDirection);
+    gl_FragColor = textureOrtho(uEnvSampler, rayDir);
+  }
 }
     """;
     
