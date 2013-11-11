@@ -35,7 +35,7 @@ class Model {
     _indexBuffer   = new IndexBuffer(_gl, bufObj["indices"]);
     _vertexBuffers = new List<VertexBuffer>();
     for (var attr in bufObj["attributes"].keys) {
-      int nElements = bufObj["metadata"]["attribute_elements"][attr];
+      int nElements = bufObj["metadata"]["elements"][attr];
       var attrData  = bufObj["attributes"][attr]; 
       _vertexBuffers.add(new VertexBuffer(_gl, nElements, attrData, attr));  
     }
@@ -106,27 +106,4 @@ class VertexBuffer {
   }
   
   void draw(int mode) => _gl.drawArrays(mode, 0, count);
-}
-
-
-class _UniqueVertIndexes {
-  int vert, mat, norm, id, color, index;
-  _UniqueVertIndexes({this.vert: -1, this.mat: -1, this.norm: -1, 
-                      this.id:   -1, this.color: -1});
-  int get hashCode {
-    int result = 17;
-    result = 37 * result * vert.hashCode;
-    result = 37 * result * mat.hashCode;
-    result = 37 * result * norm.hashCode;
-    result = 37 * result * id.hashCode;
-    result = 37 * result * color.hashCode;
-    return result;
-  }
-  bool operator==(other) {
-    return this.vert  == other.vert &&
-           this.mat   == other.mat  &&
-           this.norm  == other.norm &&
-           this.id    == other.id   &&
-           this.color == other.color;
-  }
 }
