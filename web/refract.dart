@@ -1,11 +1,11 @@
 import 'dart:html';
 import 'dart:web_gl' as webgl;
 import 'package:vector_math/vector_math.dart';
-import 'dart:typed_data';
 import 'model.dart';
 import 'shader.dart';
 import 'frame_buffer.dart';
 import 'texture.dart';
+import 'dart:typed_data';
 
 class Refract {
   int _width, _height;
@@ -29,7 +29,7 @@ class Refract {
     
     // Load stuff!
     model = new Model(_gl)
-    ..loadJsonUrl("monkey-2.js").then((_) => render());
+      ..loadBufObjUrl("monkey-2.bof").then((_) => render());
     
     bigQuad = new Model(_gl)
       ..loadBuffers(webgl.TRIANGLES,
@@ -37,8 +37,8 @@ class Refract {
         [new VertexBuffer(_gl, 2, [-1.0,-1.0,  1.0,-1.0,  1.0,1.0,  -1.0,1.0])]);
     
     backTex = new Texture(_gl)
-      //..loadImageUrl("env_1024.jpg").then((_) => render());
-      ..loadImageUrl("testPattern.png").then((_) => render());
+      ..loadImageUrl("env_1024.jpg").then((_) => render());
+      //..loadImageUrl("testPattern.png").then((_) => render());
 
     
     // Initialize stuff!
@@ -111,8 +111,9 @@ vec4 textureOrtho(sampler2D sampler, vec3 dir) {
 
 void main(void) {
   if (uViewMode == 0) {       // Composite
-    vec3 rayDir = normalize(vEyeDirection);
-    //rayDir = refract(rayDir, vec3(0.0,0.0,1.0), 1.0);
+    vec3 nEyeDir = normalize(vEyeDirection);
+    vec3 nNormal = normalize(vNormal);
+    vec3 rayDir = refract(nEyeDir, nNormal, 1.0/1.5);
     gl_FragColor = textureOrtho(uEnvSampler, rayDir) + vec4(0.1, 0.1, 0.1, 0.0);
   }
   else if (uViewMode == 1)    // Normals
