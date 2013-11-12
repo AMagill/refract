@@ -5,7 +5,6 @@ import 'model.dart';
 import 'shader.dart';
 import 'frame_buffer.dart';
 import 'texture.dart';
-import 'dart:typed_data';
 
 class Refract {
   int _width, _height;
@@ -13,7 +12,9 @@ class Refract {
   Shader _shader;
   FrameBuffer _backFbo;
   Vector3 camPos;
+  List<Model> allModels;
   Model model, bigQuad;
+  List<Texture> allBackgrounds;
   Texture backTex;
   int renderMode = 0;
   
@@ -28,17 +29,26 @@ class Refract {
 
     
     // Load stuff!
-    model = new Model(_gl)
-      ..loadBufObjUrl("monkey-2.bof").then((_) => render());
+    allModels = new List<Model>();
+    allModels.add(new Model(_gl)
+      ..loadBufObjUrl("monkey-2.bof").then((_) => render()));
+    allModels.add(new Model(_gl)
+      ..generateSphere(1.0, 32, 32));
+    allModels.add(new Model(_gl)
+    ..generateCube(1.0));
+    model = allModels[0];
     
     bigQuad = new Model(_gl)
       ..loadBuffers(webgl.TRIANGLES,
         new IndexBuffer(_gl, [0,1,2, 0,2,3]),
         [new VertexBuffer(_gl, 2, [-1.0,-1.0,  1.0,-1.0,  1.0,1.0,  -1.0,1.0])]);
     
-    backTex = new Texture(_gl)
-      ..loadImageUrl("env_1024.jpg").then((_) => render());
-      //..loadImageUrl("testPattern.png").then((_) => render());
+    allBackgrounds = new List<Texture>();
+    allBackgrounds.add(new Texture(_gl)
+      ..loadImageUrl("env_1024.jpg").then((_) => render()));
+    allBackgrounds.add(new Texture(_gl)
+      ..loadImageUrl("testPattern.png"));
+    backTex = allBackgrounds[0];
 
     
     // Initialize stuff!
@@ -250,34 +260,74 @@ void main(void) {
     camPos += delta;
   }
   
+  void setModel(int n) {
+    model = allModels[n];
+  }
+  
+  void setBackground(int n) {
+    backTex = allBackgrounds[n];
+    _gl.bindTexture(webgl.TEXTURE_2D, backTex.texture);
+  }
+  
 }
 
 
 
 Refract scene;
-bool isDown = false;
 Vector3 lastMouse;
 
 void main() {
   var canvas = document.querySelector("#glCanvas")
     ..onMouseMove.listen(onMouseMove)
     ..onMouseWheel.listen(onMouseWheel)
-    ..onMouseDown.listen((e) {isDown = true;})
-    ..onMouseUp.listen((e) {isDown = false;});
-  
+    ..onMouseDown.listen((e) {lastMouse = null;})
+    ..onTouchMove.listen(onMouseMove)
+    ..onTouchEnd.listen((e) {lastMouse = null;});
+    
   document.querySelector("#viewMode") as SelectElement
-    ..onChange.listen(onViewModeChange);
+    ..onChange.listen((e) {
+      scene.renderMode = (document.querySelector("#viewMode") as SelectElement).selectedIndex;
+      scene.render();
+    });
   
+  document.querySelector("#model") as SelectElement
+    ..onChange.listen((e) {
+      scene.setModel((document.querySelector("#model") as SelectElement).selectedIndex);
+      scene.render();
+    });
+  
+  document.querySelector("#background") as SelectElement
+    ..onChange.listen((e) {
+      scene.setBackground((document.querySelector("#background") as SelectElement).selectedIndex);
+      scene.render();
+    });
+
   scene = new Refract(canvas);
   scene.render();
 }
 
-void onMouseMove(MouseEvent e) {
-  Vector3 curMouse = new Vector3(
+//void onMouseMove(MouseEvent e) {
+void onMouseMove(var e) {
+  Vector3 curMouse;
+  bool isDown;
+  
+  if (e is TouchEvent) {
+    e.preventDefault();
+    isDown = true;
+
+    curMouse = new Vector3(
+      e.touches[0].client.x,
+      -e.touches[0].client.y,
+      0.0);
+  } else {
+    isDown = (e.which == 1);
+    
+    curMouse = new Vector3(
       e.offset.x.toDouble(), 
       -e.offset.y.toDouble(), 
-      0.0);
-  
+      0.0);    
+  }
+
   if (isDown && lastMouse != null) {
     scene.rotate(lastMouse - curMouse);
     scene.render();
@@ -288,10 +338,5 @@ void onMouseMove(MouseEvent e) {
 
 void onMouseWheel(WheelEvent e) {
   scene.camPos.z += e.wheelDeltaY.toDouble() / 480.0;
-  scene.render();
-}
-
-void onViewModeChange(Event e) {
-  scene.renderMode = (document.querySelector("#viewMode") as SelectElement).selectedIndex;
   scene.render();
 }

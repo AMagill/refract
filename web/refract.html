@@ -7,10 +7,19 @@
     <link rel="stylesheet" href="refract.css">
   </head>
   <body>
-    <table><tr><td width="600">
+    <table><tr><td width="512">
       <canvas id="glCanvas" width="512" height="512"></canvas>
       <p>
-        View mode:
+        
+        <select id="model">
+          <option value="monkey">Monkey</option>
+          <option value="sphere">Sphere</option>
+          <option value="cube">Cube</option>
+        </select>
+        <select id="background">
+          <option value="forest">Forest</option>
+          <option value="test">Test pattern</option>
+        </select>
         <select id="viewMode">
           <option value="comp">Composite</option>
           <option value="fNorm">Front normals</option>
@@ -18,6 +27,10 @@
           <option value="fDepth">Front depth</option>
           <option value="bDepth">Back depth</option>
           <option value="thick">Thickness</option>
+        </select>
+        <select id="surfaces">
+          <option value="twoSurf">Two-surface refraction</option>
+          <option value="oneSurf">First-surface refraction</option>
         </select>
       </p>
       <p>
@@ -27,7 +40,9 @@
       </p>
       <p>
         Programmed in <a href="http://dartlang.org"> Dart</a>.
+        Source code available at <a href="https://github.com/AMagill/refract">GitHub</a>.
       </p>
+      <p id="debugp"></p>
     </td></tr></table>
 
     <script type="application/dart" src="refract.dart"></script>
