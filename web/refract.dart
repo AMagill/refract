@@ -72,8 +72,9 @@ class Refract {
 precision mediump float;
 precision mediump int;
 
-attribute vec3 aPosition;
-attribute vec3 aNormal;
+attribute vec3  aPosition;
+attribute vec3  aNormal;
+attribute float aNThick;
 
 uniform mat4 uProjMatrix;
 uniform mat4 uModelViewMatrix;
@@ -81,12 +82,14 @@ uniform int  uViewMode;
 uniform mat4 uTModelView;
 uniform mat4 uInvProj;
 
-varying vec3 vNormal;
-varying vec3 vEyeDirection;
+varying vec3  vNormal;
+varying vec3  vEyeDirection;
+varying float vNThick;
 
 void main(void) {
   
   vNormal = aNormal;
+  vNThick = aNThick;
 
   if (uViewMode == 5) {
     gl_Position = vec4(aPosition.xy, 0.99, 1.0);
@@ -108,8 +111,9 @@ uniform vec2      uViewSize;
 uniform sampler2D uBackSampler;
 uniform sampler2D uEnvSampler;
 
-varying vec3 vNormal;
-varying vec3 vEyeDirection;
+varying vec3  vNormal;
+varying vec3  vEyeDirection;
+varying float vNThick;
 
 vec4 textureOrtho(sampler2D sampler, vec3 dir) {
   const float PI  = 3.1415926535898;
@@ -123,7 +127,7 @@ void main(void) {
   if (uViewMode == 0) {       // Composite
     vec3 nEyeDir = normalize(vEyeDirection);
     vec3 nNormal = normalize(vNormal);
-    vec3 rayDir = refract(nEyeDir, nNormal, 1.0/1.5);
+    vec3 rayDir = refract(nEyeDir, nNormal, 1.0/1.2);
     gl_FragColor = textureOrtho(uEnvSampler, rayDir) + vec4(0.1, 0.1, 0.1, 0.0);
   }
   else if (uViewMode == 1)    // Normals
@@ -137,15 +141,23 @@ void main(void) {
   }
   else if (uViewMode == 4)    // Combined depth
     gl_FragColor = vec4((vNormal+1.0)*0.5, gl_FragCoord.z);
-  else { // if (uViewMode == 5) // Environment
+  else if (uViewMode == 5) {  // Environment
     vec3 rayDir = normalize(vEyeDirection);
     gl_FragColor = textureOrtho(uEnvSampler, rayDir);
+  }
+  else { // if (uViewMode == 6) // Normal thickness
+    if (vNThick > 100.0)
+      gl_FragColor = vec4(1.0,0.0,0.0,1.0);
+    else {
+      float t = vNThick / 2.0;
+      gl_FragColor = vec4(t,t,t,1.0);
+    }
   }
 }
     """;
     
     _shader = new Shader(_gl, vsObject, fsObject, 
-        {'aPosition':0, 'aNormal':1});
+        {'aPosition':0, 'aNormal':1, 'aNThick':2});
 
 }
     
@@ -153,7 +165,7 @@ void main(void) {
     
     // Generate matrices
     var mvMatrix = new Matrix4.identity()
-      ..translate(0.0, 0.0, -5.0)//camPos.z)
+      ..translate(0.0, 0.0, -5.0)
       ..rotateY(radians(camPos.x))
       ..rotateX(radians(camPos.y));
     Matrix4 pMatrix = makePerspectiveMatrix(radians(-camPos.z*9.0), _width / _height, 3.0, 7.0);
@@ -187,6 +199,7 @@ void main(void) {
         break;
       case 1:   // Front normals
       case 3:   // Front depth
+      case 6:   // Normal thickness
         skip = true;
         break;
       case 2:   // Back normals
@@ -232,6 +245,10 @@ void main(void) {
       case 5:   // Thickness
         _gl.uniform1i(_shader.uniforms['uViewMode'], 3);
         _gl.clearColor(0, 0, 0, 1);
+        break;
+      case 6:   // Normal thickness
+        _gl.uniform1i(_shader.uniforms['uViewMode'], 6);
+        _gl.clearColor(0.5, 0.5, 0.5, 1);
         break;
     }
     if (!skip) {
@@ -312,7 +329,7 @@ void onMouseMove(var e) {
   bool isDown;
   
   if (e is TouchEvent) {
-    e.preventDefault();
+    e.preventDefault();   // Don't scroll the page
     isDown = true;
 
     curMouse = new Vector3(
