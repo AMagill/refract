@@ -123,6 +123,10 @@ vec4 textureOrtho(sampler2D sampler, vec3 dir) {
   return texture2D(sampler, coord);
 }
 
+float winZToEyeZ(float winZ, float near, float far) {
+  return -(far*near/(far-near)) / (winZ - 0.5 * (far+near)/(far-near) - 0.5);
+}
+
 void main(void) {
   if (uViewMode == 0) {       // Composite
     vec3 nEyeDir = normalize(vEyeDirection);
@@ -135,8 +139,13 @@ void main(void) {
   else if (uViewMode == 2)    // Depth
     gl_FragColor = vec4(gl_FragCoord.zzz, 1.0);
   else if (uViewMode == 3) {  // Thickness
-    float a = texture2D(uBackSampler, 
-      (gl_FragCoord.xy) / uViewSize).a - gl_FragCoord.z;
+    //float a = texture2D(uBackSampler, 
+    //  (gl_FragCoord.xy) / uViewSize).a - gl_FragCoord.z;
+    float winZf = texture2D(uBackSampler, (gl_FragCoord.xy) / uViewSize).a;
+    float winZn = gl_FragCoord.z;
+    float eyeZf = winZToEyeZ(winZf, 3.0, 7.0);
+    float eyeZn = winZToEyeZ(winZn, 3.0, 7.0);
+    float a = (eyeZf - eyeZn) / 2.0;
     gl_FragColor =  vec4(a, a, a, 1.0);
   }
   else if (uViewMode == 4)    // Combined depth
