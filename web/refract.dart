@@ -123,8 +123,8 @@ vec4 textureOrtho(sampler2D sampler, vec3 dir) {
   return texture2D(sampler, coord);
 }
 
-float winZToEyeZ(float winZ, float near, float far) {
-  return -(far*near/(far-near)) / (winZ - 0.5 * (far+near)/(far-near) - 0.5);
+float winZToEyeZ(float winZ, mat4 projMat) {
+  return projMat[3][2] / (2.0*winZ + projMat[2][2] - 1.0);
 }
 
 void main(void) {
@@ -139,12 +139,10 @@ void main(void) {
   else if (uViewMode == 2)    // Depth
     gl_FragColor = vec4(gl_FragCoord.zzz, 1.0);
   else if (uViewMode == 3) {  // Thickness
-    //float a = texture2D(uBackSampler, 
-    //  (gl_FragCoord.xy) / uViewSize).a - gl_FragCoord.z;
     float winZf = texture2D(uBackSampler, (gl_FragCoord.xy) / uViewSize).a;
     float winZn = gl_FragCoord.z;
-    float eyeZf = winZToEyeZ(winZf, 3.0, 7.0);
-    float eyeZn = winZToEyeZ(winZn, 3.0, 7.0);
+    float eyeZf = winZToEyeZ(winZf, uProjMatrix);
+    float eyeZn = winZToEyeZ(winZn, uProjMatrix);
     float a = (eyeZf - eyeZn) / 2.0;
     gl_FragColor =  vec4(a, a, a, 1.0);
   }
