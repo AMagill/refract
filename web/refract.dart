@@ -191,92 +191,126 @@ void main(void) {
     _gl.uniformMatrix4fv(_shader.uniforms['uTModelView'], false, 
         transMV.storage);
 
-    // Render back view
-    bool skip = false;
     switch (renderMode) {
       case 0:   // Composite
+        // First pass: Normals+depth into FBO
         _gl.uniform1i(_shader.uniforms['uViewMode'], 4);
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, _backFbo.fbo);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
-        break;
-      case 5:   // Thickness
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 4);
-        _gl.bindFramebuffer(webgl.FRAMEBUFFER, _backFbo.fbo);
-        _gl.clearColor(0, 0, 0, 1);
-        break;
-      case 1:   // Front normals
-      case 3:   // Front depth
-      case 6:   // Normal thickness
-        skip = true;
-        break;
-      case 2:   // Back normals
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 1);
-        _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
-        _gl.clearColor(0.5, 0.5, 0.5, 1);
-        break;
-      case 4:   // Back depth
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 2);
-        _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
-        _gl.clearColor(0, 0, 0, 1);
-        break;
-    }
-    if (!skip) {
-      _gl.clearDepth(0);
-      _gl.depthFunc(webgl.GEQUAL);
-      _gl.viewport(0, 0, _backFbo.width, _backFbo.height);
-      _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
-                webgl.RenderingContext.DEPTH_BUFFER_BIT);
-      model.bind();
-      model.draw();
-    }
-    
-    // Now the front view
-    skip = false;
-    switch (renderMode) {
-      case 0:   // Composite
+
+        _gl.clearDepth(0);
+        _gl.depthFunc(webgl.GEQUAL);
+        _gl.viewport(0, 0, _backFbo.width, _backFbo.height);
+        _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
+            webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        model.bind();
+        model.draw();
+
+        // Second pass: display
         _gl.uniform1i(_shader.uniforms['uViewMode'], 0);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
+
+        _gl.clearDepth(1);
+        _gl.depthFunc(webgl.LESS);
+        _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
+        _gl.viewport(0, 0, _width, _height);
+        _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
+            webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        model.draw();
+        
+        // Draw environment
+        _gl.uniform1i(_shader.uniforms['uViewMode'], 5);
+        _gl.depthMask(false);
+        bigQuad.bind();
+        bigQuad.draw();
+        _gl.depthMask(true);
         break;
+        
       case 1:   // Front normals
         _gl.uniform1i(_shader.uniforms['uViewMode'], 1);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
+
+        _gl.clearDepth(1);
+        _gl.depthFunc(webgl.LESS);
+        _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
+            webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        model.bind();
+        model.draw();
         break;
+        
       case 2:   // Back normals
-      case 4:   // Back depth
-        skip = true;
+        _gl.uniform1i(_shader.uniforms['uViewMode'], 1);
+        _gl.clearColor(0.5, 0.5, 0.5, 1);
+
+        _gl.clearDepth(0);
+        _gl.depthFunc(webgl.GEQUAL);
+        _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
+            webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        model.bind();
+        model.draw();
         break;
+        
       case 3:   // Front depth
         _gl.uniform1i(_shader.uniforms['uViewMode'], 2);
         _gl.clearColor(1, 1, 1, 1);
+
+        _gl.clearDepth(1);
+        _gl.depthFunc(webgl.LESS);
+        _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
+            webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        model.bind();
+        model.draw();
         break;
+        
+      case 4:   // Back depth
+        _gl.uniform1i(_shader.uniforms['uViewMode'], 2);
+        _gl.clearColor(0, 0, 0, 1);
+
+        _gl.clearDepth(0);
+        _gl.depthFunc(webgl.GEQUAL);
+        _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
+            webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        model.bind();
+        model.draw();
+        break;
+        
       case 5:   // Thickness
+        // First pass: Normals+depth into FBO
+        _gl.uniform1i(_shader.uniforms['uViewMode'], 4);
+        _gl.bindFramebuffer(webgl.FRAMEBUFFER, _backFbo.fbo);
+        _gl.clearColor(0, 0, 0, 1);
+
+        _gl.clearDepth(0);
+        _gl.depthFunc(webgl.GEQUAL);
+        _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
+            webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        model.bind();
+        model.draw();
+
+        // Second pass: display
         _gl.uniform1i(_shader.uniforms['uViewMode'], 3);
         _gl.clearColor(0, 0, 0, 1);
+
+        _gl.clearDepth(1);
+        _gl.depthFunc(webgl.LESS);
+        _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
+        _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
+            webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        model.draw();
         break;
+        
       case 6:   // Normal thickness
         _gl.uniform1i(_shader.uniforms['uViewMode'], 6);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
+
+        _gl.clearDepth(1);
+        _gl.depthFunc(webgl.LESS);
+        _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
+            webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        model.bind();
+        model.draw();        
         break;
     }
-    if (!skip) {
-      _gl.clearDepth(1);
-      _gl.depthFunc(webgl.LESS);
-      _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
-      _gl.viewport(0, 0, _width, _height);
-      _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
-                webgl.RenderingContext.DEPTH_BUFFER_BIT);
-      model.bind();
-      model.draw();
-    }
-    
-    // Draw the environment map
-    if (renderMode == 0) {
-      _gl.uniform1i(_shader.uniforms['uViewMode'], 5);
-      _gl.depthMask(false);
-      bigQuad.bind();
-      bigQuad.draw();
-      _gl.depthMask(true);
-    }    
 
   }
   
