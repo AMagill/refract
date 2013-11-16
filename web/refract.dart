@@ -9,7 +9,8 @@ import 'texture.dart';
 class Refract {
   int _width, _height;
   webgl.RenderingContext _gl;
-  Shader _shader;
+  Shader _refractShader, _normalShader, _depthShader, _backShader, 
+         _thickShader, _nThickShader, _envShader;
   FrameBuffer _backFbo;
   Vector3 camPos;
   List<Model> allModels;
@@ -27,7 +28,6 @@ class Refract {
     
     _gl.clearColor(0.5, 0.5, 0.5, 1.0);
 
-    
     // Load stuff!
     allModels = new List<Model>();
     allModels.add(new Model(_gl)
@@ -51,24 +51,32 @@ class Refract {
     backTex = allBackgrounds[0];
 
     
-    // Initialize stuff!
-    _initShaders();
-    _backFbo = new FrameBuffer(_gl, _width, _height); 
+    // Initialize stuff!  FBO,
+    _backFbo = new FrameBuffer(_gl, _width, _height);
+    // textures, 
     _gl.activeTexture(webgl.TEXTURE0);
     _gl.bindTexture(webgl.TEXTURE_2D, _backFbo.imageTex);
     _gl.activeTexture(webgl.TEXTURE1);
     _gl.bindTexture(webgl.TEXTURE_2D, backTex.texture);
-    _shader.use();
-    _gl.uniform1i(_shader.uniforms['uBackSampler'], 0);
-    _gl.uniform1i(_shader.uniforms['uEnvSampler'], 1);
-    _gl.uniform2f(_shader.uniforms['uViewSize'], _width, _height);
+    // and shaders.
+    _initShaders();
+    _refractShader.use();
+    _gl.uniform1i(_refractShader.uniforms['uBackSampler'], 0);
+    _gl.uniform1i(_refractShader.uniforms['uEnvSampler'], 1);
+    _gl.uniform2f(_refractShader.uniforms['uViewSize'], _width, _height);
+    _thickShader.use();
+    _gl.uniform1i(_thickShader.uniforms['uBackSampler'], 0);
+    _gl.uniform2f(_thickShader.uniforms['uViewSize'], _width, _height);    
+    _envShader.use();
+    _gl.uniform1i(_envShader.uniforms['uEnvSampler'], 1);
+    
     
     _gl.enable(webgl.DEPTH_TEST);
         
   }
 
   void _initShaders() {
-    String vsObject = """
+    String vsRefract = """
 precision mediump float;
 precision mediump int;
 
@@ -78,9 +86,6 @@ attribute float aNThick;
 
 uniform mat4 uProjMatrix;
 uniform mat4 uModelViewMatrix;
-uniform int  uViewMode;
-uniform mat4 uTModelView;
-uniform mat4 uInvProj;
 
 varying vec3  vNormal;
 varying vec3  vEyeDirection;
@@ -90,23 +95,16 @@ void main(void) {
   
   vNormal = aNormal;
   vNThick = aNThick;
-
-  if (uViewMode == 5) {
-    gl_Position = vec4(aPosition.xy, 0.99, 1.0);
-    vEyeDirection = mat3(uTModelView) * (uInvProj * vec4(aPosition,1.0)).xyz;
-  } else {
-    gl_Position = uProjMatrix * uModelViewMatrix *  vec4(aPosition, 1.0);
-    vEyeDirection = vec3(uModelViewMatrix[3] * uModelViewMatrix) + aPosition;
-  }
+  vEyeDirection = vec3(uModelViewMatrix[3] * uModelViewMatrix) + aPosition;
+  gl_Position = uProjMatrix * uModelViewMatrix *  vec4(aPosition, 1.0);
 }
     """;
     
-    String fsObject = """
+    String fsRefract = """
 precision mediump float;
 precision mediump int;
 
 uniform mat4      uProjMatrix;
-uniform int       uViewMode;
 uniform vec2      uViewSize;
 uniform sampler2D uBackSampler;
 uniform sampler2D uEnvSampler;
@@ -123,103 +121,271 @@ vec4 textureOrtho(sampler2D sampler, vec3 dir) {
   return texture2D(sampler, coord);
 }
 
+void main(void) {
+  vec3 nEyeDir = normalize(vEyeDirection);
+  vec3 nNormal = normalize(vNormal);
+  vec3 rayDir = refract(nEyeDir, nNormal, 1.0/1.2);
+  gl_FragColor = textureOrtho(uEnvSampler, rayDir) + vec4(0.1, 0.1, 0.1, 0.0);
+}
+    """;
+    
+    _refractShader = new Shader(_gl, vsRefract, fsRefract, 
+        {'aPosition':0, 'aNormal':1, 'aNThick':2});
+
+
+    String vsNormal = """
+precision mediump float;
+precision mediump int;
+
+attribute vec3  aPosition;
+attribute vec3  aNormal;
+
+uniform mat4 uProjMatrix;
+uniform mat4 uModelViewMatrix;
+
+varying vec3  vNormal;
+
+void main(void) {
+  vNormal = (aNormal+1.0)*0.5;
+  gl_Position = uProjMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+}
+    """;
+    
+    String fsNormal = """
+precision mediump float;
+precision mediump int;
+
+varying vec3  vNormal;
+
+void main(void) {
+  gl_FragColor = vec4(vNormal, 1.0);
+}
+    """;
+    
+    _normalShader = new Shader(_gl, vsNormal, fsNormal, 
+        {'aPosition':0, 'aNormal':1});
+    
+    
+    String vsDepth = """
+precision mediump float;
+precision mediump int;
+
+attribute vec3  aPosition;
+
+uniform mat4 uProjMatrix;
+uniform mat4 uModelViewMatrix;
+
+void main(void) {
+  gl_Position = uProjMatrix * uModelViewMatrix *  vec4(aPosition, 1.0);
+}
+    """;
+    
+    String fsDepth = """
+precision mediump float;
+precision mediump int;
+
+void main(void) {
+  gl_FragColor = vec4(gl_FragCoord.zzz, 1.0);
+}
+    """;
+    
+    _depthShader = new Shader(_gl, vsDepth, fsDepth, 
+        {'aPosition':0});
+    
+    String vsBack = """
+precision mediump float;
+precision mediump int;
+
+attribute vec3  aPosition;
+attribute vec3  aNormal;
+
+uniform mat4 uProjMatrix;
+uniform mat4 uModelViewMatrix;
+
+varying vec3  vNormal;
+
+void main(void) {
+  vNormal = (aNormal+1.0)*0.5;
+  gl_Position = uProjMatrix * uModelViewMatrix *  vec4(aPosition, 1.0);
+}
+    """;
+    
+    String fsBack = """
+precision mediump float;
+precision mediump int;
+
+varying vec3  vNormal;
+
+void main(void) {
+    gl_FragColor = vec4(vNormal, gl_FragCoord.z);
+}
+    """;
+    
+    _backShader = new Shader(_gl, vsBack, fsBack, 
+        {'aPosition':0, 'aNormal':1});
+
+
+    String vsThick = """
+precision mediump float;
+precision mediump int;
+
+attribute vec3  aPosition;
+
+uniform mat4 uProjMatrix;
+uniform mat4 uModelViewMatrix;
+
+void main(void) {
+  gl_Position = uProjMatrix * uModelViewMatrix *  vec4(aPosition, 1.0);
+}
+    """;
+    
+    String fsThick = """
+precision mediump float;
+precision mediump int;
+
+uniform mat4      uProjMatrix;
+uniform vec2      uViewSize;
+uniform sampler2D uBackSampler;
+
 float winZToEyeZ(float winZ, mat4 projMat) {
   return projMat[3][2] / (2.0*winZ + projMat[2][2] - 1.0);
 }
 
 void main(void) {
-  if (uViewMode == 0) {       // Composite
-    vec3 nEyeDir = normalize(vEyeDirection);
-    vec3 nNormal = normalize(vNormal);
-    vec3 rayDir = refract(nEyeDir, nNormal, 1.0/1.2);
-    gl_FragColor = textureOrtho(uEnvSampler, rayDir) + vec4(0.1, 0.1, 0.1, 0.0);
-  }
-  else if (uViewMode == 1)    // Normals
-    gl_FragColor = vec4((vNormal+1.0)*0.5, 1.0);
-  else if (uViewMode == 2)    // Depth
-    gl_FragColor = vec4(gl_FragCoord.zzz, 1.0);
-  else if (uViewMode == 3) {  // Thickness
-    float winZf = texture2D(uBackSampler, (gl_FragCoord.xy) / uViewSize).a;
-    float winZn = gl_FragCoord.z;
-    float eyeZf = winZToEyeZ(winZf, uProjMatrix);
-    float eyeZn = winZToEyeZ(winZn, uProjMatrix);
-    float a = (eyeZf - eyeZn) / 2.0;
-    gl_FragColor =  vec4(a, a, a, 1.0);
-  }
-  else if (uViewMode == 4)    // Combined depth
-    gl_FragColor = vec4((vNormal+1.0)*0.5, gl_FragCoord.z);
-  else if (uViewMode == 5) {  // Environment
-    vec3 rayDir = normalize(vEyeDirection);
-    gl_FragColor = textureOrtho(uEnvSampler, rayDir);
-  }
-  else { // if (uViewMode == 6) // Normal thickness
-    if (vNThick > 100.0)
-      gl_FragColor = vec4(1.0,0.0,0.0,1.0);
-    else {
-      float t = vNThick / 2.0;
-      gl_FragColor = vec4(t,t,t,1.0);
-    }
-  }
+  float winZf = texture2D(uBackSampler, (gl_FragCoord.xy) / uViewSize).a;
+  float winZn = gl_FragCoord.z;
+  float eyeZf = winZToEyeZ(winZf, uProjMatrix);
+  float eyeZn = winZToEyeZ(winZn, uProjMatrix);
+  float a = (eyeZf - eyeZn) / 2.0;
+  gl_FragColor =  vec4(a, a, a, 1.0);
 }
     """;
     
-    _shader = new Shader(_gl, vsObject, fsObject, 
-        {'aPosition':0, 'aNormal':1, 'aNThick':2});
+    _thickShader = new Shader(_gl, vsThick, fsThick, 
+        {'aPosition':0});    
+    
+    String vsNThick = """
+precision mediump float;
+precision mediump int;
 
+attribute vec3  aPosition;
+attribute float aNThick;
+
+uniform mat4 uProjMatrix;
+uniform mat4 uModelViewMatrix;
+
+varying float vNThick;
+
+void main(void) {
+  vNThick = aNThick;
+  gl_Position = uProjMatrix * uModelViewMatrix *  vec4(aPosition, 1.0);
+}
+    """;
+    
+    String fsNThick = """
+precision mediump float;
+precision mediump int;
+
+varying float vNThick;
+
+void main(void) {
+  float t = vNThick / 2.0;
+  gl_FragColor = vec4(t,t,t,1.0);
+}
+    """;
+    
+    _nThickShader = new Shader(_gl, vsNThick, fsNThick, 
+        {'aPosition':0, 'aNThick':2});
+
+    String vsEnvironment = """
+precision mediump float;
+precision mediump int;
+
+attribute vec3  aPosition;
+
+uniform mat4 uTModelView;
+uniform mat4 uInvProj;
+
+varying vec3  vEyeDirection;
+
+void main(void) {
+  gl_Position = vec4(aPosition.xy, 0.99, 1.0);
+  vEyeDirection = mat3(uTModelView) * (uInvProj * vec4(aPosition,1.0)).xyz;
+}
+    """;
+    
+    String fsEnvironment = """
+precision mediump float;
+precision mediump int;
+
+uniform sampler2D uEnvSampler;
+
+varying vec3  vEyeDirection;
+
+vec4 textureOrtho(sampler2D sampler, vec3 dir) {
+  const float PI  = 3.1415926535898;
+  const float PI2 = PI * 2.0;
+
+  vec2 coord = vec2(atan(dir.z, dir.x) / PI2, acos(dir.y) / PI);
+  return texture2D(sampler, coord);
+}
+
+void main(void) {
+  vec3 rayDir = normalize(vEyeDirection);
+  gl_FragColor = textureOrtho(uEnvSampler, rayDir);
+}
+    """;
+    
+    _envShader = new Shader(_gl, vsEnvironment, fsEnvironment, 
+        {'aPosition':0});
 }
     
   void render() {
-    
     // Generate matrices
     var mvMatrix = new Matrix4.identity()
       ..translate(0.0, 0.0, -5.0)
       ..rotateY(radians(camPos.x))
       ..rotateX(radians(camPos.y));
     Matrix4 pMatrix = makePerspectiveMatrix(radians(-camPos.z*9.0), _width / _height, 3.0, 7.0);
-    //Matrix4 pMatrix = makeOrthographicMatrix(-2.0, 2.0, -2.0, 2.0, 3.0, 7.0);
     Matrix4 transMV = mvMatrix.transposed();
     Matrix4 invProj = pMatrix.clone();
     invProj.invert();
 
-    // Set them in the shader
-    _gl.uniformMatrix4fv(_shader.uniforms['uModelViewMatrix'], false, 
-        mvMatrix.storage);
-    _gl.uniformMatrix4fv(_shader.uniforms['uProjMatrix'],  false, 
-        pMatrix.storage);
-    _gl.uniformMatrix4fv(_shader.uniforms['uInvProj'], false, 
-        invProj.storage);
-    _gl.uniformMatrix4fv(_shader.uniforms['uTModelView'], false, 
-        transMV.storage);
-
     switch (renderMode) {
       case 0:   // Composite
         // First pass: Normals+depth into FBO
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 4);
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, _backFbo.fbo);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
-
         _gl.clearDepth(0);
         _gl.depthFunc(webgl.GEQUAL);
         _gl.viewport(0, 0, _backFbo.width, _backFbo.height);
         _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
             webgl.RenderingContext.DEPTH_BUFFER_BIT);
+
+        _backShader.use();
+        _gl.uniformMatrix4fv(_backShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
+        _gl.uniformMatrix4fv(_backShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
         model.bind();
         model.draw();
 
         // Second pass: display
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 0);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
-
         _gl.clearDepth(1);
         _gl.depthFunc(webgl.LESS);
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
         _gl.viewport(0, 0, _width, _height);
         _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
             webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        
+        _refractShader.use();
+        _gl.uniformMatrix4fv(_refractShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
+        _gl.uniformMatrix4fv(_refractShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
         model.draw();
         
         // Draw environment
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 5);
+        _envShader.use();
+        _gl.uniformMatrix4fv(_envShader.uniforms['uInvProj'],    false, invProj.storage);
+        _gl.uniformMatrix4fv(_envShader.uniforms['uTModelView'], false, transMV.storage);
         _gl.depthMask(false);
         bigQuad.bind();
         bigQuad.draw();
@@ -227,56 +393,63 @@ void main(void) {
         break;
         
       case 1:   // Front normals
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 1);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
-
         _gl.clearDepth(1);
         _gl.depthFunc(webgl.LESS);
         _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
             webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        
+        _normalShader.use();
+        _gl.uniformMatrix4fv(_normalShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
+        _gl.uniformMatrix4fv(_normalShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
         model.bind();
         model.draw();
         break;
         
       case 2:   // Back normals
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 1);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
-
         _gl.clearDepth(0);
         _gl.depthFunc(webgl.GEQUAL);
         _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
             webgl.RenderingContext.DEPTH_BUFFER_BIT);
+
+        _normalShader.use();
+        _gl.uniformMatrix4fv(_normalShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
+        _gl.uniformMatrix4fv(_normalShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
         model.bind();
         model.draw();
         break;
         
       case 3:   // Front depth
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 2);
         _gl.clearColor(1, 1, 1, 1);
-
         _gl.clearDepth(1);
         _gl.depthFunc(webgl.LESS);
         _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
             webgl.RenderingContext.DEPTH_BUFFER_BIT);
+
+        _depthShader.use();
+        _gl.uniformMatrix4fv(_depthShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
+        _gl.uniformMatrix4fv(_depthShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
         model.bind();
         model.draw();
         break;
         
       case 4:   // Back depth
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 2);
         _gl.clearColor(0, 0, 0, 1);
-
         _gl.clearDepth(0);
         _gl.depthFunc(webgl.GEQUAL);
         _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
             webgl.RenderingContext.DEPTH_BUFFER_BIT);
+
+        _depthShader.use();
+        _gl.uniformMatrix4fv(_depthShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
+        _gl.uniformMatrix4fv(_depthShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
         model.bind();
         model.draw();
         break;
         
       case 5:   // Thickness
         // First pass: Normals+depth into FBO
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 4);
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, _backFbo.fbo);
         _gl.clearColor(0, 0, 0, 1);
 
@@ -284,29 +457,34 @@ void main(void) {
         _gl.depthFunc(webgl.GEQUAL);
         _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
             webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        _backShader.use();
+        _gl.uniformMatrix4fv(_backShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
+        _gl.uniformMatrix4fv(_backShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
         model.bind();
         model.draw();
 
         // Second pass: display
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 3);
         _gl.clearColor(0, 0, 0, 1);
-
         _gl.clearDepth(1);
         _gl.depthFunc(webgl.LESS);
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, null);
         _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
             webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        _thickShader.use();
+        _gl.uniformMatrix4fv(_thickShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
+        _gl.uniformMatrix4fv(_thickShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
         model.draw();
         break;
         
       case 6:   // Normal thickness
-        _gl.uniform1i(_shader.uniforms['uViewMode'], 6);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
-
         _gl.clearDepth(1);
         _gl.depthFunc(webgl.LESS);
         _gl.clear(webgl.RenderingContext.COLOR_BUFFER_BIT | 
             webgl.RenderingContext.DEPTH_BUFFER_BIT);
+        _nThickShader.use();
+        _gl.uniformMatrix4fv(_nThickShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
+        _gl.uniformMatrix4fv(_nThickShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
         model.bind();
         model.draw();        
         break;
