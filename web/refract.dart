@@ -24,7 +24,7 @@ class Refract {
     _height = canvas.height;
     _gl     = canvas.getContext("experimental-webgl", 
         {'antialias':false, 'depth':true});
-    camPos  = new Vector3(0.0, 0.0, -5.0);
+    camPos  = new Vector3(0.0, 0.0, -4.0);
     
     _gl.clearColor(0.5, 0.5, 0.5, 1.0);
 
@@ -35,7 +35,7 @@ class Refract {
     allModels.add(new Model(_gl)
       ..generateSphere(1.0, 32, 32));
     allModels.add(new Model(_gl)
-    ..generateCube(1.0));
+    ..generateCube(1.5));
     model = allModels[0];
     
     bigQuad = new Model(_gl)
@@ -89,14 +89,15 @@ uniform mat4 uModelViewMatrix;
 
 varying vec3  vNormal;
 varying vec3  vEyeDirection;
-varying float vNThick;
+varying vec3  vEyeLocation;
+varying float vNormThick;
 
 void main(void) {
-  
-  vNormal = aNormal;
-  vNThick = aNThick;
+  vNormal       = aNormal;
+  vNormThick    = aNThick;
   vEyeDirection = vec3(uModelViewMatrix[3] * uModelViewMatrix) + aPosition;
-  gl_Position = uProjMatrix * uModelViewMatrix *  vec4(aPosition, 1.0);
+  vEyeLocation  = aPosition;
+  gl_Position   = uProjMatrix * uModelViewMatrix *  vec4(aPosition, 1.0);
 }
     """;
     
@@ -105,13 +106,16 @@ precision mediump float;
 precision mediump int;
 
 uniform mat4      uProjMatrix;
+uniform mat4      uModelViewMatrix;
 uniform vec2      uViewSize;
 uniform sampler2D uBackSampler;
 uniform sampler2D uEnvSampler;
+uniform int       uRefractMode;
 
 varying vec3  vNormal;
 varying vec3  vEyeDirection;
-varying float vNThick;
+varying vec3  vEyeLocation;
+varying float vNormThick;
 
 vec4 textureOrtho(sampler2D sampler, vec3 dir) {
   const float PI  = 3.1415926535898;
@@ -121,11 +125,38 @@ vec4 textureOrtho(sampler2D sampler, vec3 dir) {
   return texture2D(sampler, coord);
 }
 
+float winZToEyeZ(float winZ, mat4 projMat) {
+  return projMat[3][2] / (2.0*winZ + projMat[2][2] - 1.0);
+}
+
 void main(void) {
+  const float IOR = 1.2;
+
+  // First refraction
   vec3 nEyeDir = normalize(vEyeDirection);
   vec3 nNormal = normalize(vNormal);
-  vec3 rayDir = refract(nEyeDir, nNormal, 1.0/1.2);
-  gl_FragColor = textureOrtho(uEnvSampler, rayDir) + vec4(0.1, 0.1, 0.1, 0.0);
+  vec3 rayDir = refract(nEyeDir, nNormal, 1.0/IOR);
+  if (uRefractMode == 1) {
+    gl_FragColor = textureOrtho(uEnvSampler, rayDir);
+    return;
+  }
+
+  // Second refraction
+  float backWinZ   = texture2D(uBackSampler, (gl_FragCoord.xy) / uViewSize).a;
+  float eyeThick   = winZToEyeZ(backWinZ,       uProjMatrix) -
+                     winZToEyeZ(gl_FragCoord.z, uProjMatrix);
+  float angleRatio = acos(dot(rayDir,  -vNormal)) / 
+                     acos(dot(nEyeDir, -vNormal));
+  float estThick   = angleRatio * eyeThick + (1.0-angleRatio) * vNormThick;
+  vec3  estExitPt  = vEyeLocation + rayDir * estThick; 
+  vec4  estExitPos = uProjMatrix * uModelViewMatrix * vec4(estExitPt, 1.0);
+  vec2  estExitPx  = (estExitPos.xy / estExitPos.w / 2.0) + 0.5;
+  vec4  exitNormal = texture2D(uBackSampler, estExitPx) * 2.0 - 1.0;
+  vec3  rayDir2    = refract(rayDir, -exitNormal.xyz, IOR);
+  if (all(equal(rayDir2, vec3(0.0))))
+    rayDir2 = reflect(rayDir, -exitNormal.xyz);
+
+  gl_FragColor = textureOrtho(uEnvSampler, rayDir2);
 }
     """;
     
@@ -352,7 +383,8 @@ void main(void) {
     invProj.invert();
 
     switch (renderMode) {
-      case 0:   // Composite
+      case 0:   // Composite two-surface
+      case 1:   // Composite one-surface
         // First pass: Normals+depth into FBO
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, _backFbo.fbo);
         _gl.clearColor(0.5, 0.5, 0.5, 1);
@@ -380,6 +412,7 @@ void main(void) {
         _refractShader.use();
         _gl.uniformMatrix4fv(_refractShader.uniforms['uModelViewMatrix'], false, mvMatrix.storage);
         _gl.uniformMatrix4fv(_refractShader.uniforms['uProjMatrix'],      false, pMatrix.storage);
+        _gl.uniform1i(_refractShader.uniforms['uRefractMode'], renderMode);
         model.draw();
         
         // Draw environment
@@ -391,8 +424,8 @@ void main(void) {
         bigQuad.draw();
         _gl.depthMask(true);
         break;
-        
-      case 1:   // Front normals
+
+      case 2:   // Front normals
         _gl.clearColor(0.5, 0.5, 0.5, 1);
         _gl.clearDepth(1);
         _gl.depthFunc(webgl.LESS);
@@ -406,7 +439,7 @@ void main(void) {
         model.draw();
         break;
         
-      case 2:   // Back normals
+      case 3:   // Back normals
         _gl.clearColor(0.5, 0.5, 0.5, 1);
         _gl.clearDepth(0);
         _gl.depthFunc(webgl.GEQUAL);
@@ -420,7 +453,7 @@ void main(void) {
         model.draw();
         break;
         
-      case 3:   // Front depth
+      case 4:   // Front depth
         _gl.clearColor(1, 1, 1, 1);
         _gl.clearDepth(1);
         _gl.depthFunc(webgl.LESS);
@@ -434,7 +467,7 @@ void main(void) {
         model.draw();
         break;
         
-      case 4:   // Back depth
+      case 5:   // Back depth
         _gl.clearColor(0, 0, 0, 1);
         _gl.clearDepth(0);
         _gl.depthFunc(webgl.GEQUAL);
@@ -448,7 +481,7 @@ void main(void) {
         model.draw();
         break;
         
-      case 5:   // Thickness
+      case 6:   // Thickness
         // First pass: Normals+depth into FBO
         _gl.bindFramebuffer(webgl.FRAMEBUFFER, _backFbo.fbo);
         _gl.clearColor(0, 0, 0, 1);
@@ -476,7 +509,7 @@ void main(void) {
         model.draw();
         break;
         
-      case 6:   // Normal thickness
+      case 7:   // Normal thickness
         _gl.clearColor(0.5, 0.5, 0.5, 1);
         _gl.clearDepth(1);
         _gl.depthFunc(webgl.LESS);
@@ -542,7 +575,6 @@ void main() {
   scene.render();
 }
 
-//void onMouseMove(MouseEvent e) {
 void onMouseMove(var e) {
   Vector3 curMouse;
   bool isDown;
