@@ -31,6 +31,7 @@ class Texture {
   void loadImage(ImageElement img) {
     _bindingPoint = webgl.TEXTURE_2D;
     texture = _gl.createTexture();
+    _gl.activeTexture(webgl.TEXTURE3);
     _gl.bindTexture(_bindingPoint, texture);
     _gl.texParameteri(_bindingPoint, webgl.TEXTURE_MIN_FILTER, webgl.LINEAR);
     _gl.texParameteri(_bindingPoint, webgl.TEXTURE_MAG_FILTER, webgl.LINEAR);
@@ -39,6 +40,7 @@ class Texture {
   }
   
   void bind() {
-    _gl.bindTexture(_bindingPoint, texture);
+    if (texture != null)
+      _gl.bindTexture(_bindingPoint, texture);
   }
 }

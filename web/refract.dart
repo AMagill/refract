@@ -381,7 +381,10 @@ void main(void) {
     Matrix4 transMV = mvMatrix.transposed();
     Matrix4 invProj = pMatrix.clone();
     invProj.invert();
-
+    
+    _gl.activeTexture(webgl.TEXTURE1);
+    backTex.bind();
+    
     switch (renderMode) {
       case 0:   // Composite two-surface
       case 1:   // Composite one-surface
@@ -535,7 +538,6 @@ void main(void) {
   
   void setBackground(int n) {
     backTex = allBackgrounds[n];
-    _gl.bindTexture(webgl.TEXTURE_2D, backTex.texture);
   }
   
 }
