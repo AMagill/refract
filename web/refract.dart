@@ -607,6 +607,6 @@ void onMouseMove(var e) {
 }
 
 void onMouseWheel(WheelEvent e) {
-  scene.camPos.z += e.wheelDeltaY.toDouble() / 480.0;
+  scene.camPos.z += e.deltaY.toDouble() / 480.0;
   scene.render();
 }
