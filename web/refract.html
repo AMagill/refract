@@ -3,7 +3,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>ShadowProxy</title>
+    <title>Refraction</title>
     <link rel="stylesheet" href="refract.css">
   </head>
   <body>
@@ -35,6 +35,14 @@
         This was based on <a href="http://homepage.divms.uiowa.edu/~cwyman/publications/files/approxISRefract/approxISRefr.pdf">
         "An Approximate Image-Space Approach for Interactive Refraction"</a>,
         by Chris Wyman.
+      </p>
+      <p>
+        Usually when you see refraction in a 3D scene that isn't ray-traced, only the refraction
+        against the front surface of the object is calculated.  The first surface is easy, and
+        it does a fair job of fooling an undiscerning eye, but it's far from accurate.  Truly
+        accurate refraction requires computationally expensive ray-tracing, but Chris' paper
+        offers an efficient method of approximating front and back surface refractions, which 
+        comes close to physical accuracy.  
       </p>
       <p>
         Programmed in <a href="http://dartlang.org"> Dart</a>.
