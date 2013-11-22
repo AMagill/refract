@@ -33,10 +33,11 @@ class Texture {
     texture = _gl.createTexture();
     _gl.activeTexture(webgl.TEXTURE3);
     _gl.bindTexture(_bindingPoint, texture);
-    _gl.texParameteri(_bindingPoint, webgl.TEXTURE_MIN_FILTER, webgl.LINEAR);
+    _gl.texParameteri(_bindingPoint, webgl.TEXTURE_MIN_FILTER, webgl.LINEAR_MIPMAP_LINEAR);
     _gl.texParameteri(_bindingPoint, webgl.TEXTURE_MAG_FILTER, webgl.LINEAR);
     _gl.texImage2DImage(_bindingPoint, 0, webgl.RGB, 
         webgl.RGB, webgl.UNSIGNED_BYTE, img);
+    _gl.generateMipmap(webgl.TEXTURE_2D);
   }
   
   void bind() {
